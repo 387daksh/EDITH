@@ -125,7 +125,8 @@
 
         btn.disabled = true;
         status.className = "loading";
-        status.textContent = "Cloning and ingesting... This may take a minute.";
+        status.textContent =
+          "Cloning and ingesting... This may take a minute. (Check terminal for detailed progress)";
 
         try {
           const response = await fetch(`${API_BASE}/ingest`, {
@@ -138,7 +139,7 @@
 
           if (response.ok) {
             status.className = "success";
-            status.textContent = `Success! ${data.message}`;
+            status.textContent = data.message; // Updated to use data.message directly
             askBtn.disabled = false;
           } else {
             throw new Error(data.detail || "Ingestion failed");

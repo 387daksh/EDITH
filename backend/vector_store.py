@@ -14,6 +14,7 @@ def get_collection():
     
     # Use Default Embedding Function (Sentence Transformers / all-MiniLM-L6-v2)
     # This comes built-in with chromadb if sentence-transformers is installed.
+    print("Loading embedding model (this may take time on first run)...", flush=True)
     emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
         
     return client.get_or_create_collection(

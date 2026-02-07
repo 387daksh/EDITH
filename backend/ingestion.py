@@ -37,6 +37,7 @@ def process_repo(repo_path: str) -> List[Dict[str, Any]]:
     Walks the repository, reads text files, and chunks them.
     Returns a list of documents (chunks) with metadata.
     """
+    print(f"Processing files in {repo_path}...")
     documents = []
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
@@ -49,11 +50,16 @@ def process_repo(repo_path: str) -> List[Dict[str, Any]]:
     exclude_dirs = {'.git', 'venv', '__pycache__', 'node_modules', '.idea', '.vscode', 'dist', 'build'}
     exclude_exts = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.pdf', '.exe', '.bin', '.pyc', '.whl', '.zip', '.tar', '.gz'}
 
+    file_count = 0
+    processed_file_count = 0
+    chunk_count = 0
+
     for root, dirs, files in os.walk(repo_path):
         # modify dirs in-place to skip excluded
         dirs[:] = [d for d in dirs if d not in exclude_dirs]
         
         for file in files:
+            file_count += 1
             ext = os.path.splitext(file)[1].lower()
             if ext in exclude_exts:
                 continue
@@ -79,8 +85,11 @@ def process_repo(repo_path: str) -> List[Dict[str, Any]]:
                             "chunk_index": i
                         }
                     })
+                processed_file_count += 1
+                chunk_count += len(chunks)
             except Exception as e:
                 # Log error but continue
                 print(f"Error reading {file_path}: {e}")
                 
+    print(f"Finished processing. Scanned {file_count} files, processed {processed_file_count} text files, generated {chunk_count} chunks.")
     return documents
