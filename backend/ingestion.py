@@ -4,6 +4,7 @@ import git
 from typing import List, Dict, Any
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+DATA_DIR = "data"
 REPO_DIR = "data/repos"
 
 def clone_repo(repo_url: str) -> str:
@@ -11,6 +12,11 @@ def clone_repo(repo_url: str) -> str:
     Clones a GitHub repository to the local data directory.
     Returns the path to the cloned repository.
     """
+    print(f"\n{'='*60}", flush=True)
+    print(f"🔄 CLONING REPOSITORY", flush=True)
+    print(f"   URL: {repo_url}", flush=True)
+    print(f"{'='*60}\n", flush=True)
+    
     if not os.path.exists(REPO_DIR):
         os.makedirs(REPO_DIR)
     
@@ -18,44 +24,67 @@ def clone_repo(repo_url: str) -> str:
     local_path = os.path.join(REPO_DIR, repo_name)
     
     if os.path.exists(local_path):
-        # fast path: if repo exists, we might want to pull, but for hackathon demo, 
-        # let's just use what's there or wipe and re-clone if requested.
-        # For now, simplistic approach: remove and re-clone to ensure fresh state.
+        print(f"📁 Removing existing repo at {local_path}...", flush=True)
         try:
             shutil.rmtree(local_path)
         except PermissionError:
-            # On Windows, sometimes files are locked.
-            pass
+            print(f"⚠️ Could not remove (files locked), using existing...", flush=True)
             
     if not os.path.exists(local_path):
+        print(f"⬇️ Cloning from GitHub (this may take a minute)...", flush=True)
         git.Repo.clone_from(repo_url, local_path)
+        print(f"✅ Clone complete!", flush=True)
     
     return local_path
 
+# Avoid global imports that run on startup
+from langchain_text_splitters import PythonCodeTextSplitter, RecursiveCharacterTextSplitter
+
 def process_repo(repo_path: str) -> List[Dict[str, Any]]:
+    from backend.graph import DependencyGraph  # Local import to prevent circular issues
+    
+    # Initialize graph locally for this ingestion run
+    dep_graph = DependencyGraph()
     """
     Walks the repository, reads text files, and chunks them.
-    Returns a list of documents (chunks) with metadata.
+    Also builds the dependency graph.
     """
-    print(f"Processing files in {repo_path}...")
+    print(f"\n{'='*60}", flush=True)
+    print(f"📂 PROCESSING REPOSITORY: {repo_path}", flush=True)
+    print(f"{'='*60}\n", flush=True)
+    
     documents = []
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
-        length_function=len,
-        is_separator_regex=False,
+    
+    # 1. Code Splitter (AST-based) for Python
+    python_splitter = PythonCodeTextSplitter(
+        chunk_size=1000, 
+        chunk_overlap=200
+    )
+    # 2. Generic Splitter for others
+    generic_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000, 
+        chunk_overlap=200
     )
 
-    # Exclude common binary/generated files/directories
-    exclude_dirs = {'.git', 'venv', '__pycache__', 'node_modules', '.idea', '.vscode', 'dist', 'build'}
-    exclude_exts = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.pdf', '.exe', '.bin', '.pyc', '.whl', '.zip', '.tar', '.gz'}
+    exclude_dirs = {'.git', 'venv', '__pycache__', 'node_modules', '.idea', '.vscode', 'dist', 'build', '.tox', 'eggs', '.eggs'}
+    exclude_exts = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.pdf', '.exe', '.bin', '.pyc', '.whl', '.zip', '.tar', '.gz', '.lock'}
 
     file_count = 0
     processed_file_count = 0
     chunk_count = 0
 
+    # First pass: count files
+    total_files = 0
     for root, dirs, files in os.walk(repo_path):
-        # modify dirs in-place to skip excluded
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+        for file in files:
+            ext = os.path.splitext(file)[1].lower()
+            if ext not in exclude_exts:
+                total_files += 1
+    
+    print(f"📊 Found {total_files} files to process\n", flush=True)
+
+    for root, dirs, files in os.walk(repo_path):
         dirs[:] = [d for d in dirs if d not in exclude_dirs]
         
         for file in files:
@@ -65,16 +94,24 @@ def process_repo(repo_path: str) -> List[Dict[str, Any]]:
                 continue
                 
             file_path = os.path.join(root, file)
+            rel_path = os.path.relpath(file_path, repo_path).replace("\\", "/")
+            
             try:
+                # 1. Graph Analysis (Python only)
+                if ext == '.py':
+                    dep_graph.parse_imports(file_path, repo_path)
+
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
                     
-                # Skip empty files
                 if not content.strip():
                     continue
 
-                chunks = text_splitter.split_text(content)
-                rel_path = os.path.relpath(file_path, repo_path)
+                # 2. Select Splitter
+                if ext == '.py':
+                    chunks = python_splitter.split_text(content)
+                else:
+                    chunks = generic_splitter.split_text(content)
                 
                 for i, chunk in enumerate(chunks):
                     documents.append({
@@ -82,14 +119,31 @@ def process_repo(repo_path: str) -> List[Dict[str, Any]]:
                         "content": chunk,
                         "metadata": {
                             "source": rel_path,
-                            "chunk_index": i
+                            "chunk_index": i,
+                            "language": "python" if ext == '.py' else "text"
                         }
                     })
                 processed_file_count += 1
                 chunk_count += len(chunks)
-            except Exception as e:
-                # Log error but continue
-                print(f"Error reading {file_path}: {e}")
                 
-    print(f"Finished processing. Scanned {file_count} files, processed {processed_file_count} text files, generated {chunk_count} chunks.")
+                # Progress logging every 20 files
+                if processed_file_count % 20 == 0:
+                    print(f"📄 Processed {processed_file_count}/{total_files} files ({chunk_count} chunks)...", flush=True)
+                    
+            except Exception as e:
+                print(f"❌ Error reading {rel_path}: {e}", flush=True)
+
+    # Save Graph
+    graph_path = os.path.join(DATA_DIR, "dependency_graph.gml")
+    dep_graph.save(graph_path)
+    print(f"\n📊 Dependency Graph saved ({dep_graph.graph.number_of_nodes()} nodes, {dep_graph.graph.number_of_edges()} edges)", flush=True)
+    
+    print(f"\n{'='*60}", flush=True)
+    print(f"✅ CHUNKING COMPLETE!", flush=True)
+    print(f"   Files processed: {processed_file_count}", flush=True)
+    print(f"   Chunks generated: {chunk_count}", flush=True)
+    print(f"{'='*60}", flush=True)
+    print(f"\n⏳ Now embedding chunks (this takes time on first run)...\n", flush=True)
+    
     return documents
+

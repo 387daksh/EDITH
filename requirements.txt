@@ -10,3 +10,4 @@ tiktoken
 langchain-text-splitters
 groq
 sentence-transformers
+networkx

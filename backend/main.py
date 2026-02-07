@@ -3,7 +3,9 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from backend.ingestion import clone_repo, process_repo
+from backend.ingestion import clone_repo, process_repo, DATA_DIR
+from backend.graph import DependencyGraph
+import os
 
 app = FastAPI(title="EDITH Backend")
 
@@ -19,19 +21,58 @@ app.add_middleware(
 
 class IngestRequest(BaseModel):
     repo_url: str
+    force: bool = False  # Set to True to re-ingest
 
 @app.get("/")
 def read_root():
     return {"status": "EDITH is online"}
 
+@app.get("/graph")
+def get_graph():
+    """Returns the dependency graph in Mermaid format."""
+    graph_path = os.path.join(DATA_DIR, "dependency_graph.gml")
+    dg = DependencyGraph()
+    if os.path.exists(graph_path):
+        dg.load(graph_path)
+        return {"mermaid": dg.to_mermaid()}
+    return {"mermaid": "graph TD; A[No Graph Found]"}
+
+@app.get("/status")
+def get_status():
+    """Check if data has been ingested."""
+    from backend.vector_store import get_collection
+    try:
+        collection = get_collection()
+        count = collection.count()
+        return {"ingested": count > 0, "chunks_count": count}
+    except:
+        return {"ingested": False, "chunks_count": 0}
+
 @app.post("/ingest")
 def ingest_repo(request: IngestRequest):
     try:
+        # Check if already ingested (skip re-embedding)
+        from backend.vector_store import get_collection, add_documents
+        
+        if not request.force:
+            try:
+                collection = get_collection()
+                existing_count = collection.count()
+                if existing_count > 0:
+                    print(f"⏭️ Data already exists ({existing_count} chunks). Skipping re-ingestion.", flush=True)
+                    print(f"   Use force=True to re-ingest.", flush=True)
+                    return {
+                        "status": "skipped",
+                        "message": f"Already ingested ({existing_count} chunks). Use force=true to re-ingest.",
+                        "chunks_count": existing_count
+                    }
+            except:
+                pass  # Collection doesn't exist, proceed with ingestion
+        
         repo_path = clone_repo(request.repo_url)
         documents = process_repo(repo_path)
         
         # Store in Vector Store
-        from backend.vector_store import add_documents
         add_documents(documents)
         
         return {
