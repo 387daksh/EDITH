@@ -4,88 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EDITH Demo</title>
-    <style>
-      body {
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 20px;
-        background-color: #f4f4f9;
-        color: #333;
-      }
-      h1 {
-        color: #2c3e50;
-        border-bottom: 2px solid #3498db;
-        padding-bottom: 10px;
-      }
-      .container {
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-        margin-bottom: 20px;
-      }
-      label {
-        font-weight: bold;
-        display: block;
-        margin-bottom: 5px;
-      }
-      input[type="text"] {
-        width: 100%;
-        padding: 10px;
-        margin-bottom: 10px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        box-sizing: border-box;
-      }
-      div.button-group {
-        display: flex;
-        gap: 10px;
-      }
-      button {
-        background-color: #3498db;
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 16px;
-        transition: background 0.2s;
-      }
-      button:hover {
-        background-color: #2980b9;
-      }
-      button:disabled {
-        background-color: #bdc3c7;
-        cursor: not-allowed;
-      }
-      #status {
-        margin-top: 10px;
-        font-weight: bold;
-      }
-      #answer {
-        white-space: pre-wrap;
-        background: #eef2f3;
-        padding: 15px;
-        border-radius: 4px;
-        border-left: 5px solid #3498db;
-        margin-top: 20px;
-        display: none;
-      }
-      .error {
-        color: #e74c3c;
-      }
-      .success {
-        color: #27ae60;
-      }
-      .loading {
-        color: #f39c12;
-      }
-    </style>
+    <!-- Minimal Tailwind for prototype via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
   </head>
-  <body>
-    <h1>EDITH: Repository Intelligence</h1>
+  <body class="bg-gray-50 min-h-screen">
+    <div id="root"></div>
 
+<<<<<<< Updated upstream
     <div class="container">
       <h2>1. Ingest Repository</h2>
       <label for="repoUrl">GitHub Repository URL:</label>
@@ -97,97 +22,8 @@
       />
       <button id="ingestBtn" onclick="ingestRepo()">Ingest Repository</button>
       <div id="ingestStatus" id="status"></div>
-    </div>
+    <div id="root"></div>
 
-    <div class="container">
-      <h2>2. Ask a Question</h2>
+    <!-- Vite / React entry (expects a dev/build step) -->
+    <script type="module" src="/src/main.jsx"></script>
       <label for="question">Your Question:</label>
-      <input
-        type="text"
-        id="question"
-        placeholder="e.g., How does the authentication middleware work?"
-      />
-      <button id="askBtn" onclick="askQuestion()" disabled>Ask EDITH</button>
-      <div id="answerStatus"></div>
-      <div id="answer"></div>
-    </div>
-
-    <script>
-      const API_BASE = "http://127.0.0.1:8000";
-
-      async function ingestRepo() {
-        const repoUrl = document.getElementById("repoUrl").value;
-        const btn = document.getElementById("ingestBtn");
-        const status = document.getElementById("ingestStatus");
-        const askBtn = document.getElementById("askBtn");
-
-        if (!repoUrl) return;
-
-        btn.disabled = true;
-        status.className = "loading";
-        status.textContent =
-          "Cloning and ingesting... This may take a minute. (Check terminal for detailed progress)";
-
-        try {
-          const response = await fetch(`${API_BASE}/ingest`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ repo_url: repoUrl }),
-          });
-
-          const data = await response.json();
-
-          if (response.ok) {
-            status.className = "success";
-            status.textContent = data.message; // Updated to use data.message directly
-            askBtn.disabled = false;
-          } else {
-            throw new Error(data.detail || "Ingestion failed");
-          }
-        } catch (error) {
-          status.className = "error";
-          status.textContent = `Error: ${error.message}`;
-        } finally {
-          btn.disabled = false;
-        }
-      }
-
-      async function askQuestion() {
-        const question = document.getElementById("question").value;
-        const btn = document.getElementById("askBtn");
-        const answerDiv = document.getElementById("answer");
-        const status = document.getElementById("answerStatus");
-
-        if (!question) return;
-
-        btn.disabled = true;
-        answerDiv.style.display = "none";
-        status.className = "loading";
-        status.textContent = "Thinking...";
-
-        try {
-          const response = await fetch(`${API_BASE}/query`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ question: question }),
-          });
-
-          const data = await response.json();
-
-          if (response.ok) {
-            status.textContent = "";
-            answerDiv.style.display = "block";
-            answerDiv.textContent = data.answer;
-          } else {
-            throw new Error(data.detail || "Query failed");
-          }
-        } catch (error) {
-          status.className = "error";
-          status.textContent = `Error: ${error.message}`;
-        } finally {
-          btn.disabled = false;
-        }
-      }
-    </script>
-  </body>
-</html>
