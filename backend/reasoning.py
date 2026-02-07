@@ -34,7 +34,7 @@ def answer_question(question: str) -> str:
     """
     # 1. Retrieve relevant documents
     # Uses local embeddings via vector_store
-    results = query_documents(question, n_results=10) 
+    results = query_documents(question, n_results=25) 
     
     # 2. Format context
     context_parts = []
@@ -42,7 +42,12 @@ def answer_question(question: str) -> str:
         for i, doc in enumerate(results['documents'][0]):
             meta = results['metadatas'][0][i] if results['metadatas'] else {}
             source = meta.get('source', 'unknown')
-            context_parts.append(f"--- SOURCE: {source} ---\n{doc}\n")
+            
+            # Skip binary-like or irrelevant files even if retrieved
+            if any(x in source.lower() for x in ['.png', '.svg', '.ai', '.lock', 'license', 'test', 'tests']):
+                continue
+                
+            context_parts.append(f"--- FILE: {source} ---\n{doc}\n")
             
     context_str = "\n".join(context_parts)
     
@@ -60,7 +65,7 @@ def answer_question(question: str) -> str:
                     "content": full_prompt,
                 }
             ],
-            model="llama3-70b-8192", # High performance model
+            model="llama-3.3-70b-versatile", # Updated to latest stable
             temperature=0, # Deterministic answers
         )
         return chat_completion.choices[0].message.content
