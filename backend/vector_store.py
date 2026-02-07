@@ -11,12 +11,13 @@ def get_db_client():
 
 def get_collection():
     client = get_db_client()
-    # Use Snowflake Embedding Function
-    from backend.snowflake_embeddings import SnowflakeEmbeddingFunction
-    emb_fn = SnowflakeEmbeddingFunction()
+    
+    # Use Default Embedding Function (Sentence Transformers / all-MiniLM-L6-v2)
+    # This comes built-in with chromadb if sentence-transformers is installed.
+    emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
         
     return client.get_or_create_collection(
-        name="edith_context_snowflake", # New collection name to avoid conflicts
+        name="edith_context_groq", # New collection for Groq/Local embeddings
         embedding_function=emb_fn
     )
 
@@ -33,13 +34,13 @@ def add_documents(documents: List[Dict[str, Any]]):
     documents_content = [d["content"] for d in documents]
     metadatas = [d["metadata"] for d in documents]
     
-    # Process in batches to avoid hitting limits
-    batch_size = 166  # Safe batch size for Chroma/OpenAI
+    # Process in batches
+    batch_size = 166 
     total_added = 0
     
     for i in range(0, len(ids), batch_size):
         end_idx = min(i + batch_size, len(ids))
-        collection.upsert( # upsert handles updates
+        collection.upsert(
             ids=ids[i:end_idx],
             documents=documents_content[i:end_idx],
             metadatas=metadatas[i:end_idx]

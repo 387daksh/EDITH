@@ -1,22 +1,25 @@
 from backend.vector_store import query_documents
-from backend.snowflake_utils import run_query
-import json
 import os
+from groq import Groq
 
-SYSTEM_PROMPT = """You are EDITH, a strict and precise technical assistant for a one-day hackathon project.
+# Initialize Groq Client
+# Ensure GROQ_API_KEY is in os.environ
+client = Groq(
+    api_key=os.environ.get("GROQ_API_KEY"),
+)
+
+SYSTEM_PROMPT = """You are EDITH, a strict and precise technical assistant.
 Your goal is to help developers understand large codebases.
 
 PRINCIPLES:
 1. Answer accuracy > features.
 2. Context > visualization.
-3. Refuse cleanly > hallucinate. If you don't know, say "I don't have enough context in the provided files to answer that."
+3. Refuse cleanly > hallucinate. If you don't know, say "I don't have enough context."
 4. Be concise and direct.
 
 Instructions:
-- You will be provided with CONTEXT which allows you to see parts of the codebase.
 - Answer the user's QUESTION based ONLY on the provided CONTEXT.
-- If the CONTEXT is insufficient, state exactly what is missing or say you don't know.
-- Cite the file paths in your answer if relevant (e.g., "In `backend/main.py`, ...").
+- Cite file paths if relevant.
 
 CONTEXT:
 {context}
@@ -27,10 +30,10 @@ QUESTION:
 
 def answer_question(question: str) -> str:
     """
-    Retrieves context for the question and generates an answer using Snowflake Cortex LLM.
+    Retrieves context for the question and generates an answer using Groq.
     """
     # 1. Retrieve relevant documents
-    # Note: query_documents will now use the SnowflakeEmbeddingFunction we hooked up
+    # Uses local embeddings via vector_store
     results = query_documents(question, n_results=10) 
     
     # 2. Format context
@@ -46,22 +49,20 @@ def answer_question(question: str) -> str:
     if not context_str:
         return "I could not find any relevant code in the ingested repository to answer your question."
 
-    # 3. Call Snowflake Cortex LLM
-    # We construct the full prompt and send it to Cortex.
-    # Model defaults to 'llama3-70b' but can be changed via env var.
-    model = os.getenv("SNOWFLAKE_MODEL", "llama3-70b")
-    
+    # 3. Call Groq LLM
     full_prompt = SYSTEM_PROMPT.format(context=context_str, question=question)
     
-    # Escape single quotes for SQL
-    safe_prompt = full_prompt.replace("'", "''")
-    query = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('{model}', '{safe_prompt}') as response"
-    
     try:
-        result = run_query(query)
-        if result and result[0]['response']:
-            return result[0]['response']
-        else:
-            return "Snowflake Cortex returned an empty response."
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": full_prompt,
+                }
+            ],
+            model="llama3-70b-8192", # High performance model
+            temperature=0, # Deterministic answers
+        )
+        return chat_completion.choices[0].message.content
     except Exception as e:
-        return f"Error calling Snowflake Cortex: {str(e)}"
+        return f"Error calling Groq: {str(e)}"
