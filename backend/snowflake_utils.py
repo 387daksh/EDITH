@@ -15,6 +15,7 @@ def get_snowflake_connection():
             database=os.getenv("SNOWFLAKE_DATABASE"),
             schema=os.getenv("SNOWFLAKE_SCHEMA"),
             role=os.getenv("SNOWFLAKE_ROLE"),
+            authenticator=os.getenv("SNOWFLAKE_AUTHENTICATOR"),
         )
         return conn
     except Exception as e:

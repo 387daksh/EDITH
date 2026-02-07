@@ -1,6 +1,7 @@
 from backend.vector_store import query_documents
 from backend.snowflake_utils import run_query
 import json
+import os
 
 SYSTEM_PROMPT = """You are EDITH, a strict and precise technical assistant for a one-day hackathon project.
 Your goal is to help developers understand large codebases.
@@ -46,12 +47,15 @@ def answer_question(question: str) -> str:
         return "I could not find any relevant code in the ingested repository to answer your question."
 
     # 3. Call Snowflake Cortex LLM
-    # We construct the full prompt and send it to Cortex 'llama3-70b' (or similar supported model)
+    # We construct the full prompt and send it to Cortex.
+    # Model defaults to 'llama3-70b' but can be changed via env var.
+    model = os.getenv("SNOWFLAKE_MODEL", "llama3-70b")
+    
     full_prompt = SYSTEM_PROMPT.format(context=context_str, question=question)
     
     # Escape single quotes for SQL
     safe_prompt = full_prompt.replace("'", "''")
-    query = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3-70b', '{safe_prompt}') as response"
+    query = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('{model}', '{safe_prompt}') as response"
     
     try:
         result = run_query(query)
