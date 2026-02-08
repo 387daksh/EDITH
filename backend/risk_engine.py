@@ -1,110 +1,161 @@
+import os
+import subprocess
 from datetime import datetime, timedelta
-import random
+import json
 
-# Mock Codebase Structure
-# Simulating a repo with different critical modules
-MODULES = [
-    {"name": "Auth Service", "path": "backend/auth.py", "complexity": 8, "lines": 450},
-    {"name": "Payment Gateway", "path": "backend/payments.py", "complexity": 10, "lines": 1200},
-    {"name": "Frontend Core", "path": "frontend/core/App.tsx", "complexity": 6, "lines": 800},
-    {"name": "HR Policy Engine", "path": "backend/hr_policy.py", "complexity": 7, "lines": 600},
-    {"name": "Search Algo", "path": "backend/search.py", "complexity": 9, "lines": 350},
-    {"name": "UI Components", "path": "frontend/components/Button.tsx", "complexity": 2, "lines": 150},
-    {"name": "Database Schema", "path": "database/schema.sql", "complexity": 5, "lines": 200},
-    {"name": "Recruitment AI", "path": "backend/hr_processing.py", "complexity": 8, "lines": 900},
-]
+# Configuration
+REPO_PATH = os.getcwd()
+IGNORED_DIRS = {'.git', 'venv', 'node_modules', '__pycache__', 'dist', 'build', '.vscode', '.idea'}
+IGNORED_EXTENSIONS = {'.json', '.md', '.txt', '.lock', '.log', '.png', '.jpg', '.svg', '.pyc'}
 
-# Mock Developers
-DEVS = [
-    {"email": "daksh@edith.ai", "name": "Daksh", "role": "admin"},
-    {"email": "kanav@edith.ai", "name": "Kanav", "role": "dev"},
-    {"email": "somya@edith.ai", "name": "Somya", "role": "hr"},
-    {"email": "alex@company.tech", "name": "Alex", "role": "dev"},
-]
+def get_git_files():
+    """Retrieves all tracked files from git."""
+    try:
+        cmd = ["git", "ls-files"]
+        result = subprocess.run(cmd, cwd=REPO_PATH, capture_output=True, text=True, check=True)
+        files = result.stdout.splitlines()
+        return [f for f in files if not any(d in f for d in IGNORED_DIRS) and not any(f.endswith(ext) for ext in IGNORED_EXTENSIONS)]
+    except subprocess.CalledProcessError:
+        return []
+
+def get_file_stats(filepath):
+    """Calculates complexity (lines of code) and fetches ownership info."""
+    try:
+        # Get Line Count (Complexity Proxy)
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = len(f.readlines())
+        
+        complexity = min(round(lines / 50), 10) # Normalize 0-10 (500 lines = max complexity)
+        if complexity == 0: complexity = 1
+
+        # Get Commit/Author Info
+        cmd = ["git", "shortlog", "-s", "-n", "--", filepath]
+        result = subprocess.run(cmd, cwd=REPO_PATH, capture_output=True, text=True)
+        
+        authors = []
+        total_commits = 0
+        
+        for line in result.stdout.splitlines():
+            parts = line.strip().split('\t')
+            if len(parts) == 2:
+                count = int(parts[0])
+                name = parts[1]
+                authors.append({"name": name, "count": count})
+                total_commits += count
+        
+        if not authors:
+            return None
+
+        primary_owner = authors[0]
+        ownership_percent = int((primary_owner["count"] / total_commits) * 100) if total_commits > 0 else 0
+        
+        return {
+            "complexity": complexity,
+            "lines": lines,
+            "owner": primary_owner["name"],
+            "ownership_percent": ownership_percent,
+            "authors": authors
+        }
+
+    except Exception as e:
+        print(f"Error analyzing {filepath}: {e}")
+        return None
 
 def analyze_risk():
     """
-    Generates mock risk data by correlating 'code complexity' with 'developer availability'.
-    In a real system, this would:
-    1. Run 'git blame' to find owners.
-    2. Check 'leaves.json' for availability.
-    3. Calculate Bus Factor.
+    Analyzes the codebase for risk using Git history and file complexity.
     """
-    
+    files = get_git_files()
+    if not files:
+        return {"error": "No files found or not a git repository."}
+
     risk_report = []
     
-    for mod in MODULES:
-        # 1. Assign a random 'Primary Owner'
-        # Weighted implementation: Critical stuff owned by specific people to simulate risk
-        if "Payment" in mod["name"] or "Search" in mod["name"]:
-            owner = next(d for d in DEVS if d["name"] == "Kanav") # Kanav owns critical tech
-        elif "HR" in mod["name"]:
-            owner = next(d for d in DEVS if d["name"] == "Somya") # Somya owns HR
-        elif "Auth" in mod["name"]:
-             owner = next(d for d in DEVS if d["name"] == "Daksh") # Daksh owns Auth
-        else:
-            owner = random.choice(DEVS)
-
-        # 2. Simulate Bus Factor (lines owned by primary author)
-        # Higher complexity = Higher chance of being a silo
-        ownership_percent = random.randint(60, 100) if mod["complexity"] > 7 else random.randint(30, 80)
+    # Analyze top 30 largest/most complex files to save time
+    # In prod, this would be async/cached
+    analyzed_count = 0
+    
+    for file in files:
+        if analyzed_count > 50: break # Limit for performance
         
-        # 3. Simulate Availability (Mocking 'Leave' status)
-        # Randomly mark some critical people as 'On Leave Soon'
-        status = "Active"
-        leave_start = None
+        stats = get_file_stats(file)
+        if not stats: continue
         
-        # Scripted scenarios for demo:
-        # Kanav (Critical Dev) is going on leave -> HIGH RISK for Payments
-        if owner["name"] == "Kanav":
-            status = "On Leave Soon"
-            leave_start = (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d")
+        analyzed_count += 1
         
-        # 4. Calculate Risk Score (0-100)
-        # Base risk from complexity
-        risk_score = mod["complexity"] * 5 
+        # Risk Logic
+        risk_score = stats["complexity"] * 5
         
-        # Multiplier from Silo (High ownership)
-        if ownership_percent > 80:
+        # Bus Factor Risk
+        if stats["ownership_percent"] > 80:
             risk_score += 20
+        if stats["ownership_percent"] > 90:
+            risk_score += 15
             
-        # Multiplier from Availability
-        if status == "On Leave Soon":
-            risk_score += 30 # CRITICAL SPIKE
-            
-        # Cap at 100
+        # Recent Churn Risk (Mocking this part for now as it requires more complex git log parsing)
+        # In a real scenario, check if the file was modified heavily recently
+        
+        # Normalize Risk
         risk_score = min(risk_score, 100)
         
-        # Determine Status Label
         if risk_score > 80:
             risk_label = "CRITICAL"
-            action_item = f"Immediate Knowledge Transfer req. for {owner['name']}"
+            action_item = f"Reduce dependency on {stats['owner']}"
         elif risk_score > 50:
             risk_label = "WARNING"
-            action_item = "Schedule Code Review"
+            action_item = "Conduct Code Review"
         else:
             risk_label = "STABLE"
-            action_item = "None"
+            action_item = "Monitor"
 
         risk_report.append({
-            "module": mod["name"],
-            "path": mod["path"],
-            "complexity": mod["complexity"],
-            "owner": owner,
-            "ownership_percent": ownership_percent,
-            "owner_status": status,
-            "leave_start": leave_start,
+            "module": os.path.basename(file),
+            "path": file,
+            "complexity": stats["complexity"],
+            "owner": {"name": stats["owner"]}, # Frontend expects object
+            "ownership_percent": stats["ownership_percent"],
+            "owner_status": "Active", # Placeholder for HR data integration
+            "leave_start": None,
             "risk_score": risk_score,
             "risk_label": risk_label,
             "action_item": action_item
         })
-        
-    # Sort by risk (descending)
+
+    # Sort by risk
     risk_report.sort(key=lambda x: x["risk_score"], reverse=True)
     
     return {
         "generated_at": datetime.now().strftime("%H:%M:%S"),
-        "total_modules": len(MODULES),
-        "system_health": int(100 - (sum(r["risk_score"] for r in risk_report) / len(risk_report))),
+        "total_modules": len(files),
+        "system_health": int(100 - (sum(r["risk_score"] for r in risk_report) / max(len(risk_report), 1))),
         "report": risk_report
     }
+
+if __name__ == "__main__":
+    print(json.dumps(analyze_risk(), indent=2))
+
+def get_user_history(username):
+    """
+    Fetches git commit history for a specific user.
+    """
+    try:
+        # Get commit log for author
+        # Format: Hash|Date|Message
+        cmd = ["git", "log", f"--author={username}", "--pretty=format:%h|%ad|%s", "--date=short", "-n", "20"]
+        result = subprocess.run(cmd, cwd=REPO_PATH, capture_output=True, text=True)
+        
+        history = []
+        for line in result.stdout.splitlines():
+            parts = line.split('|', 2)
+            if len(parts) == 3:
+                history.append({
+                    "hash": parts[0],
+                    "date": parts[1],
+                    "message": parts[2]
+                })
+        
+        return history
+
+    except Exception as e:
+        print(f"Error fetching history for {username}: {e}")
+        return []
