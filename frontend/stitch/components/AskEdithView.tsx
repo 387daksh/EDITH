@@ -1,23 +1,56 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Message } from '../types';
-import { generateEdithResponse } from '../services/gemini';
+import { askEdith, checkStatus } from '../services/edith';
 
 const AskEdithView: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'assistant',
-      content: "Hello! I'm EDITH, your technical and organizational intelligence engine. Ask me about system architecture, PR reviews, or company benefits.",
+      content: "Hello! I'm EDITH, your codebase intelligence engine. I analyze repositories and answer questions about architecture, dependencies, and code patterns. Ask me anything about your ingested codebase!",
       timestamp: new Date(),
     }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isTyping]);
+
+  // Check backend connection on mount
+  useEffect(() => {
+    checkStatus()
+      .then((status) => {
+        setIsConnected(true);
+        if (status.ingested) {
+          setMessages(prev => [...prev, {
+            id: 'status',
+            role: 'assistant',
+            content: `✅ Backend connected! I have ${status.chunks_count} code chunks ready to analyze.`,
+            timestamp: new Date(),
+          }]);
+        } else {
+          setMessages(prev => [...prev, {
+            id: 'status',
+            role: 'assistant',
+            content: `⚠️ Backend connected, but no repository has been ingested yet. Please ingest a repository first using the Code Domain view.`,
+            timestamp: new Date(),
+          }]);
+        }
+      })
+      .catch(() => {
+        setIsConnected(false);
+        setMessages(prev => [...prev, {
+          id: 'error',
+          role: 'assistant',
+          content: `❌ Cannot connect to EDITH backend at http://127.0.0.1:8000. Please ensure the backend server is running.`,
+          timestamp: new Date(),
+        }]);
+      });
+  }, []);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,12 +62,21 @@ const AskEdithView: React.FC = () => {
     setIsTyping(true);
 
     try {
-      const context = input.toLowerCase().includes('policy') || input.toLowerCase().includes('hr') || input.toLowerCase().includes('leave') ? 'hr' : 'technical';
-      const result = await generateEdithResponse(input, context);
-      setMessages(prev => [...prev, { id: (Date.now()+1).toString(), role: 'assistant', content: result || "I'm sorry, I couldn't find that in the knowledge base.", timestamp: new Date() }]);
-    } catch (e) { 
+      const result = await askEdith(input);
+      setMessages(prev => [...prev, { 
+        id: (Date.now()+1).toString(), 
+        role: 'assistant', 
+        content: result || "I couldn't find relevant information in the codebase.", 
+        timestamp: new Date() 
+      }]);
+    } catch (e: any) { 
       console.error(e); 
-      setMessages(prev => [...prev, { id: (Date.now()+1).toString(), role: 'assistant', content: "I encountered an error while processing your request. Please try again later.", timestamp: new Date() }]);
+      setMessages(prev => [...prev, { 
+        id: (Date.now()+1).toString(), 
+        role: 'assistant', 
+        content: `Error: ${e.message || "Failed to get response from EDITH backend."}`, 
+        timestamp: new Date() 
+      }]);
     }
     finally { setIsTyping(false); }
   };
@@ -47,8 +89,10 @@ const AskEdithView: React.FC = () => {
             <div className="absolute inset-0 bg-primary rounded-[32px] opacity-0 group-hover:opacity-10 transition-opacity"></div>
             <span className="material-symbols-outlined text-4xl">psychology</span>
           </div>
-          <h2 className="text-4xl font-black text-gray-900 tracking-tighter">Intelligence Engine</h2>
-          <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-4 leading-relaxed max-w-sm mx-auto">Instant contextual answers derived from your codebase and docs.</p>
+          <h2 className="text-4xl font-black text-gray-900 tracking-tighter">EDITH Intelligence</h2>
+          <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-4 leading-relaxed max-w-sm mx-auto">
+            {isConnected === null ? "Connecting..." : isConnected ? "Connected to Backend" : "Backend Offline"}
+          </p>
         </div>
 
         {messages.map((msg) => (
@@ -65,7 +109,7 @@ const AskEdithView: React.FC = () => {
             }`}>
               {msg.role === 'assistant' && (
                   <div className="flex items-center gap-2 mb-3">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-primary bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">EDITH v3.1</span>
+                      <span className="text-[9px] font-black uppercase tracking-widest text-primary bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">EDITH RAG</span>
                   </div>
               )}
               <div className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.content}</div>
@@ -100,19 +144,20 @@ const AskEdithView: React.FC = () => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             className="flex-1 bg-transparent px-2 border-none focus:ring-0 text-sm font-bold text-gray-900 placeholder:text-gray-300 placeholder:font-medium"
-            placeholder="Ask anything about architecture, policies, or team metrics..."
+            placeholder="Ask about code architecture, dependencies, or functions..."
+            disabled={isConnected === false}
           />
           <button 
             type="submit"
-            disabled={!input.trim() || isTyping}
+            disabled={!input.trim() || isTyping || isConnected === false}
             className="bg-primary hover:bg-emerald-900 disabled:bg-gray-200 text-white px-8 py-3 rounded-full transition-all shadow-lg active:scale-95 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest"
           >
-            Ask Edith
+            Ask EDITH
             <span className="material-symbols-outlined text-base">send</span>
           </button>
         </form>
         <p className="text-center text-[9px] font-black text-gray-300 uppercase tracking-widest mt-4">
-          Powered by Gemini 3.0 Pro • Internal Intelligence Hub
+          Powered by BGE Embeddings • Groq LLM • Agentic RAG
         </p>
       </div>
     </div>

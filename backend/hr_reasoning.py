@@ -63,10 +63,26 @@ def classify_intent(question: str) -> str:
 
 def _build_context_text(docs: List[Dict[str, Any]]) -> str:
     parts = []
+    total_len = 0
+    MAX_CHARS = 6000 # Approx 1500 tokens
+    
     for d in docs:
         title = d.get("title", "Untitled")
         content = d.get("content", "")
-        parts.append(f"--- SOURCE: {title} ---\n{content}\n")
+        # Compact whitespace
+        content = " ".join(content.split())
+        
+        entry = f"--- SOURCE: {title} ---\n{content}\n"
+        
+        if total_len + len(entry) > MAX_CHARS:
+            remaining = MAX_CHARS - total_len
+            if remaining > 200:
+                parts.append(entry[:remaining] + "... (truncated)")
+            break
+            
+        parts.append(entry)
+        total_len += len(entry)
+        
     return "\n".join(parts)
 
 
@@ -115,7 +131,7 @@ def ask_hr(question: str, top_k: int = 3) -> Dict[str, Any]:
     try:
         chat_completion = _groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="llama3-70b-8192",
+            model="llama-3.1-8b-instant",
             temperature=0,
         )
         content = chat_completion.choices[0].message.content

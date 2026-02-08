@@ -6,6 +6,7 @@ export type ViewType =
   | 'ShowWork' 
   | 'AskEdith' 
   | 'HRDomain' 
+  | 'Team'
   | 'Settings' 
   | 'Notifications' 
   | 'HelpCenter' 

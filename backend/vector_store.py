@@ -100,13 +100,15 @@ def query_documents(query_text: str, n_results: int = 5) -> Dict[str, Any]:
     pairs = [(query_text, doc) for doc in docs]
     scores = reranker.predict(pairs)
     
-    # Step 3: Sort by reranker score and take top n
-    ranked = sorted(zip(scores, docs, metas, ids), reverse=True)[:n_results]
+    # Step 3: Sort by reranker score using indices (avoids comparing dicts)
+    indexed_scores = list(enumerate(scores))
+    indexed_scores.sort(key=lambda x: x[1], reverse=True)
+    top_indices = [idx for idx, _ in indexed_scores[:n_results]]
     
-    # Unpack results
-    reranked_docs = [item[1] for item in ranked]
-    reranked_metas = [item[2] for item in ranked]
-    reranked_ids = [item[3] for item in ranked]
+    # Unpack results using sorted indices
+    reranked_docs = [docs[i] for i in top_indices]
+    reranked_metas = [metas[i] for i in top_indices]
+    reranked_ids = [ids[i] for i in top_indices]
     
     print(f"Reranked {len(docs)} candidates → top {len(reranked_docs)}", flush=True)
     

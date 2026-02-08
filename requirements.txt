@@ -11,3 +11,6 @@ langchain-text-splitters
 groq
 sentence-transformers
 networkx
+pypdf
+python-multipart
+PyJWT

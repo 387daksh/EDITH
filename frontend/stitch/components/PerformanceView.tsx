@@ -1,14 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer, BarChart, Bar, XAxis, Tooltip, Cell } from 'recharts';
-
-const radarData = [
-  { subject: 'Coding', A: 90 },
-  { subject: 'Design', A: 65 },
-  { subject: 'Comms', A: 80 },
-  { subject: 'Leadership', A: 70 },
-  { subject: 'Speed', A: 85 },
-  { subject: 'Debug', A: 95 },
-];
+import { PerformanceData, getMyPerformance } from '../services/edith';
 
 const activityData = [
   { name: 'Mon', value: 40 },
@@ -19,6 +11,28 @@ const activityData = [
 ];
 
 const PerformanceView: React.FC = () => {
+  const [data, setData] = useState<PerformanceData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const perfData = await getMyPerformance();
+        setData(perfData);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  if (loading) return <div className="flex justify-center py-20"><span className="material-symbols-outlined animate-spin text-4xl text-emerald-500">sync</span></div>;
+  if (error) return <div className="text-center text-red-500 py-20 font-bold">{error}</div>;
+  if (!data) return null;
+
   return (
     <div className="animate-fadeIn pb-12 space-y-6">
       {/* Top Section: Score & Trend */}
@@ -29,10 +43,10 @@ const PerformanceView: React.FC = () => {
             <div>
               <h3 className="text-gray-400 text-[11px] font-black uppercase tracking-widest mb-1">Overall Performance Score</h3>
               <div className="flex items-baseline gap-3">
-                <span className="text-5xl font-black text-gray-900 tracking-tighter">94.8%</span>
+                <span className="text-5xl font-black text-gray-900 tracking-tighter">{data.overall_score}%</span>
                 <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black flex items-center gap-1">
                   <span className="material-symbols-outlined text-[14px]">trending_up</span>
-                  +2.4%
+                  +{data.trend}%
                 </span>
               </div>
               <p className="text-xs text-gray-400 mt-2 font-bold uppercase tracking-wide">Top 5% among peers in Technical proficiency</p>
@@ -44,24 +58,19 @@ const PerformanceView: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-10 relative z-10">
             <div className="space-y-6">
-              {[
-                { label: 'Code Quality', val: 92, color: 'bg-primary', icon: 'code', iconColor: 'text-primary' },
-                { label: 'Collaboration', val: 85, color: 'bg-emerald-500', icon: 'group', iconColor: 'text-emerald-500' },
-                { label: 'Velocity', val: 78, color: 'bg-teal-500', icon: 'speed', iconColor: 'text-teal-500' },
-                { label: 'Compliance', val: 100, color: 'bg-emerald-600', icon: 'verified', iconColor: 'text-emerald-600' },
-              ].map((skill) => (
+              {data.metrics.map((skill) => (
                 <div key={skill.label} className="group">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center transition-colors group-hover:bg-white border border-transparent group-hover:border-gray-100">
-                        <span className={`material-symbols-outlined text-[18px] ${skill.iconColor}`}>{skill.icon}</span>
+                        <span className="material-symbols-outlined text-[18px] text-gray-400 group-hover:text-primary">bar_chart</span>
                       </div>
                       <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">{skill.label}</span>
                     </div>
                     <span className="text-sm font-black text-gray-900">{skill.val}%</span>
                   </div>
                   <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div className={`h-full ${skill.color} rounded-full transition-all duration-1000`} style={{ width: `${skill.val}%` }}></div>
+                    <div className="h-full bg-primary rounded-full transition-all duration-1000" style={{ width: `${skill.val}%` }}></div>
                   </div>
                 </div>
               ))}
@@ -69,7 +78,7 @@ const PerformanceView: React.FC = () => {
 
             <div className="h-[250px] flex items-center justify-center">
               <ResponsiveContainer width="100%" height="100%">
-                <RadarChart data={radarData}>
+                <RadarChart data={data.skills}>
                   <PolarGrid stroke="#f1f5f9" />
                   <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 800 }} />
                   <Radar 
@@ -124,7 +133,7 @@ const PerformanceView: React.FC = () => {
         </div>
       </div>
 
-      {/* Middle Grid: Metric Cards */}
+      {/* Metric Cards (Static for now to save time, but could be dynamic) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl p-6 shadow-card border border-gray-100 flex flex-col justify-between group hover:border-emerald-200 transition-all">
           <div className="flex items-center gap-3 mb-6">
@@ -205,16 +214,12 @@ const PerformanceView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="text-sm">
-              {[
-                { name: 'Advanced Python Structures', date: 'Oct 24, 2023', status: 'Passed', statusType: 'success', score: '98/100', icon: 'terminal' },
-                { name: 'Cybersecurity Basics', date: 'Oct 20, 2023', status: 'Passed', statusType: 'success', score: '92/100', icon: 'security' },
-                { name: 'Cloud Infrastructure', date: 'In Progress', status: 'Active', statusType: 'warning', score: '--/100', icon: 'cloud' },
-              ].map((row, idx) => (
+              {data.assessments.map((row, idx) => (
                 <tr key={idx} className="group hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0">
                   <td className="py-5 pl-2 font-bold text-gray-700">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 border border-gray-100 group-hover:bg-white transition-colors">
-                        <span className="material-symbols-outlined text-[20px]">{row.icon}</span>
+                        <span className="material-symbols-outlined text-[20px]">assignment_turned_in</span>
                       </div>
                       <span>{row.name}</span>
                     </div>
@@ -222,9 +227,9 @@ const PerformanceView: React.FC = () => {
                   <td className="py-5 text-gray-500 font-bold text-[11px] uppercase tracking-wider">{row.date}</td>
                   <td className="py-5">
                     <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                      row.statusType === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'
+                      row.status === 'Passed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'
                     }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${row.statusType === 'success' ? 'bg-emerald-600' : 'bg-amber-600 animate-pulse'}`}></span>
+                      <span className={`w-1.5 h-1.5 rounded-full ${row.status === 'Passed' ? 'bg-emerald-600' : 'bg-amber-600 animate-pulse'}`}></span>
                       {row.status}
                     </span>
                   </td>
